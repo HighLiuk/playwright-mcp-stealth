@@ -201,13 +201,16 @@ async function findActivePageWs(browserWs) {
 }
 
 // ---------- Server setup ----------
-const app = express();
-const server = http.createServer(app);
-app.use(express.static("public"));
-app.use(express.json()); // per leggere body JSON nelle POST
+const ui = express();
+const api = express();
+const uiServer = http.createServer(ui);
+const apiServer = http.createServer(api);
+
+ui.use(express.static("public"));
+api.use(express.json()); // per leggere body JSON nelle POST
 
 // LIST: per la sidebar
-app.get("/sessions", (req, res) => {
+ui.get("/sessions", (req, res) => {
   const sessions = [...registry.values()].map((s) => ({
     id: s.id,
     port: s.port,
@@ -219,7 +222,7 @@ app.get("/sessions", (req, res) => {
 });
 
 // CREATE: avvia browser con Playwright+Stealth
-app.post("/session", async (req, res) => {
+api.post("/session", async (req, res) => {
   try {
     const sess = await createSession(req.body || {});
     res.status(201).json({
@@ -235,7 +238,7 @@ app.post("/session", async (req, res) => {
 });
 
 // DELETE: chiude e ripulisce
-app.delete("/session/:id", async (req, res) => {
+api.delete("/session/:id", async (req, res) => {
   try {
     const ok = await destroySession(req.params.id);
     if (!ok) return res.status(404).json({ error: "not found" });
@@ -246,7 +249,7 @@ app.delete("/session/:id", async (req, res) => {
 });
 
 // --- WebSocket bridge: streams the active tab for the selected session ---
-const wss = new WebSocketServer({ server, path: "/bridge" });
+const wss = new WebSocketServer({ server: uiServer, path: "/bridge" });
 wss.on("connection", (wsClient) => {
   let pageClient = null; // CDP client for current PAGE target
   let page = null;
@@ -322,11 +325,11 @@ wss.on("connection", (wsClient) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(
-    "CDP Embed Viewer v4 (sessions + active tab) -> http://localhost:" + PORT
-  );
+uiServer.listen(3000, () => {
+  console.log("CDP Embed Viewer UI -> http://localhost:3000");
+});
+apiServer.listen(3001, () => {
+  console.log("CDP Embed Viewer API -> http://localhost:3001");
 });
 
 for (const sig of ["SIGINT", "SIGTERM"]) {
