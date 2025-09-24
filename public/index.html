@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<meta charset="utf-8" />
+<title>CDP Sessions Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    color-scheme: dark light;
+  }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, Segoe UI, Inter, Roboto, sans-serif;
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    grid-template-rows: 1fr;
+    height: 100dvh;
+    background: #0e0f14;
+    color: #eaeaf0;
+  }
+  #side {
+    padding: 12px;
+    border-right: 1px solid #0006;
+    background: #1f2230;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  #main {
+    display: grid;
+    place-items: center;
+  }
+  h1 {
+    font-size: 1rem;
+    margin: 0 0 4px;
+    opacity: 0.9;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  button {
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid #0006;
+    background: #fff1;
+    color: inherit;
+    cursor: pointer;
+  }
+  ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: auto;
+  }
+  li.session {
+    border: 1px solid #0006;
+    border-radius: 8px;
+    padding: 8px;
+    background: #1116;
+    cursor: pointer;
+  }
+  li.session small {
+    display: block;
+    opacity: 0.8;
+  }
+  li.session.active {
+    outline: 2px solid #7aa2ff;
+  }
+  #status {
+    font-size: 0.9em;
+    opacity: 0.8;
+  }
+  canvas {
+    background: #111;
+    max-width: 100%;
+    max-height: 100%;
+    width: min(100%, 1400px);
+    height: auto;
+    border-radius: 8px;
+  }
+</style>
+
+<aside id="side">
+  <div class="row" style="justify-content: space-between">
+    <h1>Sessioni DevTools</h1>
+    <button id="refresh">Aggiorna</button>
+  </div>
+  <div id="status">Scansione in corso…</div>
+  <ul id="sessions"></ul>
+  <div style="opacity: 0.75; font-size: 0.9em">
+    Le sessioni sono rilevate localmente (processi Chrome/Chromium/Electron con
+    DevTools). Ricarica la pagina o premi “Aggiorna” per risincronizzare.
+  </div>
+</aside>
+
+<main id="main">
+  <canvas id="view" width="1280" height="800"></canvas>
+</main>
+
+<script>
+  const statusEl = document.getElementById("status");
+  const listEl = document.getElementById("sessions");
+  const refreshBtn = document.getElementById("refresh");
+  const view = document.getElementById("view");
+  const ctx = view.getContext("2d");
+  let socket,
+    img = new Image(),
+    deviceW = 1280,
+    deviceH = 800,
+    currentId = null;
+
+  function setStatus(s) {
+    statusEl.textContent = s;
+  }
+  function wsUrl() {
+    return (
+      (location.protocol === "https:" ? "wss" : "ws") +
+      "://" +
+      location.host +
+      "/bridge"
+    );
+  }
+
+  async function loadSessions() {
+    setStatus("Scansione in corso…");
+    listEl.innerHTML = "";
+    try {
+      const r = await fetch("/sessions");
+      if (!r.ok) throw new Error(await r.text());
+      const { sessions } = await r.json();
+      if (!sessions || sessions.length === 0) {
+        setStatus("Nessuna sessione trovata.");
+        return;
+      }
+      setStatus(`Trovate ${sessions.length} sessioni.`);
+      sessions.forEach((s) => {
+        const li = document.createElement("li");
+        li.className = "session";
+        li.dataset.id = s.id;
+        li.innerHTML = `<strong>${escapeHtml(s.browser || "Browser")}</strong>
+                      <small>pid:${s.pid} · port:${s.port}</small>`;
+        li.onclick = () => connectToSession(s);
+        listEl.appendChild(li);
+      });
+    } catch (e) {
+      setStatus("Errore scansione: " + e.message);
+    }
+  }
+
+  function markActive(id) {
+    [...listEl.querySelectorAll(".session")].forEach((li) => {
+      li.classList.toggle("active", li.dataset.id === id);
+    });
+  }
+  function escapeHtml(s) {
+    return (
+      s?.replace(
+        /[&<>"']/g,
+        (c) =>
+          ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+          }[c])
+      ) || ""
+    );
+  }
+
+  function connectToSession(sess) {
+    // Close previous
+    socket?.close();
+    socket = new WebSocket(wsUrl());
+    socket.onopen = () => {
+      setStatus(`Bridge connesso → ${sess.browser} (pid:${sess.pid})`);
+      socket.send(JSON.stringify({ type: "connect", wsBrowserUrl: sess.ws }));
+      currentId = sess.id;
+      markActive(currentId);
+    };
+    socket.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "status") setStatus(msg.message);
+      if (msg.type === "frame") {
+        if (msg.w && msg.h && (msg.w !== deviceW || msg.h !== deviceH)) {
+          deviceW = msg.w;
+          deviceH = msg.h;
+          view.width = deviceW;
+          view.height = deviceH;
+        }
+        img.onload = () => ctx.drawImage(img, 0, 0, view.width, view.height);
+        img.src = "data:image/jpeg;base64," + msg.data;
+      }
+    };
+    socket.onclose = () => setStatus("Disconnesso");
+    socket.onerror = () => setStatus("Errore bridge");
+  }
+
+  refreshBtn.onclick = () => loadSessions();
+
+  // Auto-load on page open
+  loadSessions();
+</script>
