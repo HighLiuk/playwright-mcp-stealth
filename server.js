@@ -2,7 +2,6 @@ import express from "express";
 import http from "http";
 import { WebSocketServer } from "ws";
 import CDP from "chrome-remote-interface";
-import { execFile } from "node:child_process";
 import getPort from "get-port";
 import { chromium } from "playwright-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
@@ -56,7 +55,6 @@ async function createSession({
   // Assicuriamoci che il DevTools sia up e leggiamo l'endpoint WS
   const version = await waitForDevtools(port, 60, 150);
   const wsBrowserUrl = version.webSocketDebuggerUrl;
-  const pid = await pidFromPort(port);
 
   const id = wsBrowserUrl.split("/").pop();
   const expiresAt =
@@ -77,7 +75,6 @@ async function createSession({
     id,
     port,
     wsBrowserUrl,
-    pid,
     expiresAt,
     timer,
     browser,
@@ -94,44 +91,6 @@ async function destroySession(id) {
   if (s.timer) clearTimeout(s.timer);
   registry.delete(id);
   return true;
-}
-
-// ---------- Utilities ----------
-function execFileP(cmd, args, opts = {}) {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { maxBuffer: 1024 * 1024, ...opts },
-      (err, stdout, stderr) => {
-        if (err) return reject(err);
-        resolve({ stdout, stderr });
-      }
-    );
-  });
-}
-
-async function pidFromPort(port) {
-  try {
-    const { stdout } = await execFileP("lsof", [
-      "-nP",
-      `-iTCP:${port}`,
-      "-sTCP:LISTEN",
-      "-Fp",
-    ]);
-    const m = stdout.match(/p(\d+)/);
-    if (m) return Number(m[1]);
-  } catch {}
-
-  // Fallback Linux con ss (se lsof non c’è)
-  try {
-    const { stdout } = await execFileP("ss", ["-ltnp"]);
-    const line = stdout.split("\n").find((l) => l.includes(`:${port} `));
-    // estrae pid da users:(("chrome",pid=1234,fd=...))
-    const m = line && line.match(/pid=(\d+)/);
-    if (m) return Number(m[1]);
-  } catch {}
-  return null;
 }
 
 function httpOriginFromWs(wsUrl) {
@@ -214,7 +173,6 @@ ui.get("/sessions", (req, res) => {
   const sessions = [...registry.values()].map((s) => ({
     id: s.id,
     port: s.port,
-    pid: s.pid,
     ws: s.wsBrowserUrl,
     expiresAt: s.expiresAt,
   }));
@@ -228,7 +186,6 @@ api.post("/session", async (req, res) => {
     res.status(201).json({
       id: sess.id,
       port: sess.port,
-      pid: sess.pid,
       ws: sess.wsBrowserUrl,
       expiresAt: sess.expiresAt,
     });

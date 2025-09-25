@@ -141,7 +141,7 @@
         li.className = "session";
         li.dataset.id = s.id;
         li.innerHTML = `<strong>${escapeHtml(s.browser || "Browser")}</strong>
-                      <small>pid:${s.pid} · port:${s.port}</small>`;
+                      <small>port:${s.port}</small>`;
         li.onclick = () => connectToSession(s);
         listEl.appendChild(li);
       });
@@ -176,7 +176,7 @@
     socket?.close();
     socket = new WebSocket(wsUrl());
     socket.onopen = () => {
-      setStatus(`Bridge connesso → ${sess.browser} (pid:${sess.pid})`);
+      setStatus(`Bridge connesso → ${sess.browser}`);
       socket.send(JSON.stringify({ type: "connect", wsBrowserUrl: sess.ws }));
       currentId = sess.id;
       markActive(currentId);
