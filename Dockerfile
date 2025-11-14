@@ -1,9 +1,22 @@
 FROM node:24-bookworm-slim
+
 WORKDIR /app
+
 COPY package*.json ./
-RUN npm install --production
-RUN npx playwright install --with-deps chromium
-COPY . .
-ENV NODE_ENV=production
-EXPOSE 3000 3001
-CMD ["node", "server.js"]
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends curl jq netcat-openbsd && \
+    npm install && \
+    npx playwright install --with-deps chromium && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    npm cache clean --force
+
+COPY launch_browser.js .
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
+EXPOSE 9222
+EXPOSE 8931
+
+ENTRYPOINT ["./entrypoint.sh"]

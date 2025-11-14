@@ -1,14 +1,12 @@
 {
-  "name": "cdp-embed-viewer",
-  "version": "4.0.0",
-  "type": "module",
+  "name": "playwright-stealth-mcp",
+  "version": "1.0.0",
+  "description": "Docker container for Playwright-Extra with Stealth and MCP server.",
+  "main": "start.js",
   "dependencies": {
-    "chrome-remote-interface": "^0.33.0",
-    "express": "^4.19.2",
-    "get-port": "^7.0.0",
-    "playwright": "^1.47.0",
+    "@playwright/mcp": "^0.0.46",
+    "playwright": "^1.57.0-alpha-2025-11-07",
     "playwright-extra": "^4.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "ws": "^8.17.0"
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }
